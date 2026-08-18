@@ -55,10 +55,10 @@ PASSO 2 - INSTALAR DEPENDENCIAS (1 COMANDO)
 ========================================
 
 Linux (root):
-   curl -fsSL https://raw.githubusercontent.com/denderson2013-bot/agente-claude-telegram-setup-alunos-denderson/main/bootstrap.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/main/bootstrap.sh | bash
 
 macOS (usuario normal):
-   curl -fsSL https://raw.githubusercontent.com/denderson2013-bot/agente-claude-telegram-setup-alunos-denderson/main/bootstrap.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/main/bootstrap.sh | bash
 
 Instala: Node 22, Python 3, ffmpeg, Claude Code CLI 2.1.118 (pinado),
 tmux, PostgreSQL 16 + pgvector, Caddy, pm2 globalmente.

@@ -72,7 +72,7 @@ Se falhar, pergunta de novo o IP/usuario/senha. Se a VPS for nova, pode levar 1-
 ### Rode o bootstrap remotamente
 
 ```bash
-ssh_run "curl -fsSL https://raw.githubusercontent.com/denderson2013-bot/agente-claude-telegram-setup-alunos-denderson/main/bootstrap.sh | bash"
+ssh_run "curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/main/bootstrap.sh | bash"
 ```
 
 Vai demorar 5-10 min. Avise o aluno: "to instalando Node, Postgres, Caddy e dependencias na sua VPS, espera ~10 min".
@@ -238,7 +238,7 @@ ffmpeg -version | head -1
 
 Se algo faltar, manda o aluno rodar de novo:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/denderson2013-bot/agente-claude-telegram-setup-alunos-denderson/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/main/bootstrap.sh | bash
 ```
 
 ---
