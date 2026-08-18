@@ -1,0 +1,29 @@
+# Crontab de referência — instala com `crontab -e` na VPS, depois do bootstrap.
+# Troque {{AGENTE_NAME_LOWERCASE}} pelo nome real definido na ETAPA 0.
+# Todos os horários abaixo são em UTC (hora do servidor). Converta pra Brasília
+# (UTC-3) antes de decidir horário de briefing/relatório.
+
+# Consolida a conversa do Telegram no banco a cada 5 min (histórico pro boot ler)
+*/5 * * * * /usr/bin/python3 /opt/{{AGENTE_NAME_LOWERCASE}}-bot/consolidate-conversations.py >> /opt/{{AGENTE_NAME_LOWERCASE}}-bot/logs/consolidate.log 2>&1
+
+# Healthcheck do bot externo
+*/2 * * * * /opt/{{AGENTE_NAME_LOWERCASE}}-bot/healthcheck.sh >/dev/null 2>&1
+
+# Dispara lembrete agendado que já venceu
+* * * * * /usr/bin/python3 /opt/{{AGENTE_NAME_LOWERCASE}}/tools/lembretes_check.py >/dev/null 2>&1
+
+# Cobra promessa vencida (sweep) e reescreve memory/promessas.md
+10 * * * * /usr/bin/python3 /opt/{{AGENTE_NAME_LOWERCASE}}/tools/promessas.py sweep >> /opt/{{AGENTE_NAME_LOWERCASE}}-bot/logs/promessas.log 2>&1
+
+# Consolida a fila de aprendizado (aciona a Aria só se tiver lição pendente) — 19h de Brasília
+0 22 * * * /opt/{{AGENTE_NAME_LOWERCASE}}/tools/aprendizado.sh >> /opt/{{AGENTE_NAME_LOWERCASE}}-bot/logs/aprendizado.log 2>&1
+
+# Detector de minerador/invasão na VPS
+*/5 * * * * /opt/{{AGENTE_NAME_LOWERCASE}}/tools/anti_miner.sh >/dev/null 2>&1
+
+# Reinicia a sessão do agente 1x por dia (limpa qualquer trava acumulada) — 5h UTC
+0 5 * * * /usr/bin/systemctl restart {{AGENTE_NAME_LOWERCASE}}-agent >/dev/null 2>&1
+
+# Backup criptografado diário — só se voce configurou tools/backup.sh (precisa
+# de repo git próprio pra receber os backups; ver comentário no topo do script)
+30 3 * * * /opt/{{AGENTE_NAME_LOWERCASE}}/tools/backup.sh >> /opt/{{AGENTE_NAME_LOWERCASE}}-bot/logs/backup.log 2>&1

@@ -1,12 +1,21 @@
-# Database Schema — naia_memory
+# Database Schema — {{AGENTE_NAME_LOWERCASE}}_memory
 
-Schema completo do banco PostgreSQL usado pelo agente Naia (memoria vetorial, SDR, DMs, transcricoes).
+Schema do banco PostgreSQL usado pelo agente (memoria vetorial, delegacao a subagente,
+promessas, lembretes). Fork sanitizado da base "naia_memory"; as tabelas de
+SDR/DM/analytics do template original ficaram, sem uso, caso um fork futuro precise
+delas — o time deste fork nao usa.
 
 - **Engine**: PostgreSQL 14+ (testado em 14.22)
 - **Extensao obrigatoria**: `pgvector`
 - **Arquivo**: `schema.sql` (DDL apenas, sem dados, sanitizado)
-- **Tamanho**: ~41 KB / 1.641 linhas
-- **Total**: 24 tabelas, 33 indices, 22 sequences
+- **Embeddings**: 384 dimensoes, geradas pelo servico local `{{AGENTE_NAME_LOWERCASE}}-memory`
+  (porta 3007, `/embed`), **nao** pela API da OpenAI. Se algum dia trocar de provedor de
+  embedding, mude a dimensao da coluna `vector(N)` pra bater com o novo modelo, senao todo
+  INSERT falha por incompatibilidade de tamanho.
+- **Tabelas novas neste fork**: `agente_atividade`, `agente_atividade_passo`, `promessas`,
+  `lembretes` — nao existiam no dump original, foram acrescentadas no fim do `schema.sql`
+  pra bater com o que `tools/agente_log.py`, `tools/promessas.py` e
+  `tools/lembretes_check.py` esperam.
 
 ## Como aplicar o schema
 
@@ -20,23 +29,24 @@ Schema completo do banco PostgreSQL usado pelo agente Naia (memoria vetorial, SD
 
 ```bash
 # Criar database (ajuste o usuario conforme seu ambiente)
-createdb -h 127.0.0.1 -U postgres naia_memory
+createdb -h 127.0.0.1 -U postgres {{AGENTE_NAME_LOWERCASE}}_memory
 
 # Habilitar pgvector dentro do banco recem-criado
-psql -h 127.0.0.1 -U postgres -d naia_memory -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql -h 127.0.0.1 -U postgres -d {{AGENTE_NAME_LOWERCASE}}_memory -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### 3. Aplicar o schema
 
 ```bash
-psql -h 127.0.0.1 -U postgres -d naia_memory -f schema.sql
+psql -h 127.0.0.1 -U postgres -d {{AGENTE_NAME_LOWERCASE}}_memory -f schema.sql
 ```
 
 ### 4. Validar
 
 ```bash
-psql -h 127.0.0.1 -U postgres -d naia_memory -c "\dt"
-# Deve listar 24 tabelas
+psql -h 127.0.0.1 -U postgres -d {{AGENTE_NAME_LOWERCASE}}_memory -c "\dt"
+# Deve listar as tabelas originais MAIS agente_atividade, agente_atividade_passo,
+# promessas e lembretes
 ```
 
 ## Tabelas agrupadas por dominio
@@ -80,11 +90,23 @@ Sistema de agentes SDR (Davi, Lucas, Felipe, etc).
 | `sdr_agent_sales` | Vendas registradas por agente | ~350 linhas |
 | `sdr_cart_abandonments` | Carrinhos abandonados rastreados | ~240 linhas |
 
-### Analytics (1 tabela)
+### Analytics (1 tabela, herdada, sem uso neste fork)
 
-| Tabela | Funcao | Volume prod |
-|---|---|---|
-| `site_analytics` | Eventos de tracking de sites/landing pages | ~770 linhas |
+| Tabela | Funcao |
+|---|---|
+| `site_analytics` | Eventos de tracking de sites/landing pages |
+
+### Delegacao, promessas e lembretes (4 tabelas, novas neste fork)
+
+Sao o que faz o `CLAUDE.md` e os agentes deste fork funcionarem de verdade — sem elas,
+`tools/agente_log.py`, `tools/promessas.py` e `tools/lembretes_check.py` falham.
+
+| Tabela | Funcao |
+|---|---|
+| `agente_atividade` | Registro de cada delegacao a subagente (inicio, fim, resultado, tokens) |
+| `agente_atividade_passo` | Passo intermediario de uma atividade ainda aberta |
+| `promessas` | Toda promessa de trabalho futuro, com prazo e prova de entrega exigida |
+| `lembretes` | Lembrete agendado que o cron dispara quando vence |
 
 ## Top tabelas por volume
 
@@ -109,6 +131,6 @@ Sistema de agentes SDR (Davi, Lucas, Felipe, etc).
 Caso o schema mude em producao, regere com:
 
 ```bash
-ssh root@{{VPS_IP}} "PGPASSWORD=*** pg_dump -h 127.0.0.1 -U n8n -s --no-owner --no-privileges --no-comments naia_memory" > schema.sql
-# E remova manualmente as linhas \restrict / \unrestrict no inicio e fim
+ssh root@{{VPS_IP}} "PGPASSWORD=*** pg_dump -h 127.0.0.1 -U {{AGENTE_NAME_LOWERCASE}} -s --no-owner --no-privileges --no-comments {{AGENTE_NAME_LOWERCASE}}_memory" > schema.sql
+# E remova manualmente as linhas \restrict / \unrestrict no inicio e fim, se existirem
 ```

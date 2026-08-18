@@ -33,7 +33,7 @@ CREATE TABLE public.conversation_history (
     agent_id text DEFAULT 'main'::text NOT NULL,
     role text NOT NULL,
     content text NOT NULL,
-    embedding public.vector(1536),
+    embedding public.vector(384),
     tokens_used integer DEFAULT 0,
     created_at timestamp with time zone DEFAULT now()
 );
@@ -166,7 +166,7 @@ CREATE TABLE public.memory_chunks (
     agent_id text DEFAULT 'main'::text NOT NULL,
     chunk_index integer DEFAULT 0 NOT NULL,
     content text NOT NULL,
-    embedding public.vector(1536),
+    embedding public.vector(384),
     file_hash text,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now()
@@ -203,7 +203,7 @@ CREATE TABLE public.memory_facts (
     category text DEFAULT 'general'::text NOT NULL,
     fact text NOT NULL,
     source_session text,
-    embedding public.vector(1536),
+    embedding public.vector(384),
     relevance_score double precision DEFAULT 1.0,
     created_at timestamp with time zone DEFAULT now(),
     expires_at timestamp with time zone
@@ -556,7 +556,7 @@ CREATE TABLE public.transcript_chunks (
     content text NOT NULL,
     role text DEFAULT 'mixed'::text,
     token_estimate integer DEFAULT 0,
-    embedding public.vector(1536),
+    embedding public.vector(384),
     created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1037,3 +1037,137 @@ ALTER TABLE ONLY public.transcript_chunks
 --
 
 
+
+
+--
+-- Extensao pos-fork: tabelas usadas por tools/agente_log.py, tools/promessas.py
+-- e tools/lembretes_check.py. Nao existiam no dump original desta base.
+--
+
+--
+-- Name: agente_atividade; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agente_atividade (
+    id integer NOT NULL,
+    agente text NOT NULL,
+    tarefa text NOT NULL,
+    sessao text,
+    frente text,
+    iniciado_em timestamp with time zone DEFAULT now() NOT NULL,
+    terminado_em timestamp with time zone,
+    status text,
+    resultado text,
+    arquivos text[],
+    tokens integer
+);
+
+CREATE SEQUENCE public.agente_atividade_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.agente_atividade_id_seq OWNED BY public.agente_atividade.id;
+ALTER TABLE ONLY public.agente_atividade ALTER COLUMN id SET DEFAULT nextval('public.agente_atividade_id_seq'::regclass);
+ALTER TABLE ONLY public.agente_atividade ADD CONSTRAINT agente_atividade_pkey PRIMARY KEY (id);
+
+CREATE INDEX agente_atividade_em_aberto_idx ON public.agente_atividade (terminado_em) WHERE terminado_em IS NULL;
+CREATE INDEX agente_atividade_agente_idx ON public.agente_atividade (agente, iniciado_em);
+
+--
+-- Name: agente_atividade_passo; Type: TABLE; Schema: public; Owner: -
+--
+-- Passo intermediário de uma atividade ainda em aberto (dá vida ao painel de
+-- agentes: é o texto que aparece enquanto o agente ainda está trabalhando).
+
+CREATE TABLE public.agente_atividade_passo (
+    id integer NOT NULL,
+    atividade_id integer NOT NULL,
+    texto text NOT NULL,
+    criado_em timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE SEQUENCE public.agente_atividade_passo_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.agente_atividade_passo_id_seq OWNED BY public.agente_atividade_passo.id;
+ALTER TABLE ONLY public.agente_atividade_passo ALTER COLUMN id SET DEFAULT nextval('public.agente_atividade_passo_id_seq'::regclass);
+ALTER TABLE ONLY public.agente_atividade_passo ADD CONSTRAINT agente_atividade_passo_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.agente_atividade_passo
+    ADD CONSTRAINT agente_atividade_passo_atividade_id_fkey FOREIGN KEY (atividade_id) REFERENCES public.agente_atividade(id) ON DELETE CASCADE;
+
+--
+-- Name: promessas; Type: TABLE; Schema: public; Owner: -
+--
+-- Toda frase que descreve trabalho futuro entra aqui ANTES de a mensagem sair
+-- pro Telegram. Ver tools/promessas.py para o fluxo completo (add, despachar,
+-- entregar, cancelar, bloquear, sweep).
+
+CREATE TABLE public.promessas (
+    id integer NOT NULL,
+    texto text NOT NULL,
+    dono text NOT NULL,
+    evidencia text,
+    prazo timestamp with time zone,
+    msg_id text,
+    status text DEFAULT 'aberta'::text NOT NULL,
+    nota text,
+    agent_id text,
+    criado_em timestamp with time zone DEFAULT now() NOT NULL,
+    fechado_em timestamp with time zone,
+    CONSTRAINT promessas_status_check CHECK (status = ANY (ARRAY['aberta'::text, 'despachada'::text, 'entregue'::text, 'cancelada'::text, 'bloqueada'::text]))
+);
+
+CREATE SEQUENCE public.promessas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.promessas_id_seq OWNED BY public.promessas.id;
+ALTER TABLE ONLY public.promessas ALTER COLUMN id SET DEFAULT nextval('public.promessas_id_seq'::regclass);
+ALTER TABLE ONLY public.promessas ADD CONSTRAINT promessas_pkey PRIMARY KEY (id);
+
+CREATE INDEX promessas_status_prazo_idx ON public.promessas (status, prazo);
+
+--
+-- Name: lembretes; Type: TABLE; Schema: public; Owner: -
+--
+-- Ver tools/lembretes_check.py (cron por minuto) e a seção "PROATIVIDADE" do
+-- CLAUDE.md pra como o agente insere um lembrete novo.
+
+CREATE TABLE public.lembretes (
+    id integer NOT NULL,
+    quando timestamp with time zone NOT NULL,
+    texto text NOT NULL,
+    enviado boolean DEFAULT false NOT NULL,
+    criado_em timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE SEQUENCE public.lembretes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.lembretes_id_seq OWNED BY public.lembretes.id;
+ALTER TABLE ONLY public.lembretes ALTER COLUMN id SET DEFAULT nextval('public.lembretes_id_seq'::regclass);
+ALTER TABLE ONLY public.lembretes ADD CONSTRAINT lembretes_pkey PRIMARY KEY (id);
+
+CREATE INDEX lembretes_pendentes_idx ON public.lembretes (quando) WHERE NOT enviado;
+
+--
+-- Extensao pos-fork completa
+--
