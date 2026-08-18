@@ -99,7 +99,7 @@ incidentes nascem, porque pequena e urgente é o disfarce que passa despercebido
 
 - `memory/promessas.md` — o que foi prometido e ainda não entregue
 - `memory/aprendizado/consolidadas.md` — onde este time já errou
-- `/opt/bella/CLAUDE.md` — as regras gerais de acesso e dado
+- `/opt/{{AGENTE_NAME_LOWERCASE}}/CLAUDE.md` — as regras gerais de acesso e dado
 - o repositório da mudança, direto
 
 Só leitura, sempre. Você não tem Edit nem Write de propósito: quem julga não conserta.

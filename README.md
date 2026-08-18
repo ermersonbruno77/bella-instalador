@@ -2,7 +2,7 @@
 
 ---
 
-## Sobre este fork: Bella, pronta pro time
+## Sobre este fork: time pronto, nome livre
 
 Este repositório parte do setup público acima e já vem com um time de 12 subagentes
 pré-configurados e um `CLAUDE.md` mais maduro (protocolo de boot, sistema de promessas, fila de
@@ -16,9 +16,12 @@ O time vem com: `paulo-dev`, `juliana-ops`, `jonathan-copy`, `rafael-projetos`, 
 mora em `.claude/agents/<nome>.md`, e a Aria (`.claude/agents/aria-arquivista.md`) explica o
 processo de manter esses arquivos honestos sem inchar.
 
-O nome do agente já vem definido como **Bella**; ao seguir a instalação abaixo, use "Bella" quando
-for perguntado o nome, para os caminhos (`/opt/bella-bot/`, etc.) baterem com o que o `CLAUDE.md`
-espera.
+`CLAUDE.md` e os 12 agentes usam `{{AGENTE_NAME}}`/`{{AGENTE_NAME_LOWERCASE}}` (nome do agente) e
+`{{DONO}}` (nome do admin/Chefe) como placeholder, iguais aos do resto do repo. Responda essas duas
+perguntas na ETAPA 0 do `SETUP-AGENTE.md` com o nome que quiser (ex: TMB) e os caminhos
+(`/opt/<nome>-bot/`, etc.) já saem certos. Veja a nota de "caminho curto" na ETAPA 0: pra este
+fork, só 5 perguntas são realmente obrigatórias (nome do agente, nome do admin, VPS, token e ID do
+Telegram).
 
 ---
 

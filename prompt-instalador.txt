@@ -1,7 +1,9 @@
 Quero instalar meu agente autonomo Claude + Telegram numa VPS Ubuntu.
 
-Acessa o repositorio publico https://github.com/denderson2013-bot/agente-claude-telegram-setup-alunos-denderson
-e segue o passo a passo de SETUP-AGENTE.md.
+Acessa o repositorio publico https://github.com/ermersonbruno77/bella-instalador
+e segue o passo a passo de SETUP-AGENTE.md. Esse fork ja vem com CLAUDE.md e 12 subagentes
+prontos em .claude/agents/ (nao precisa criar agente do zero); a ETAPA 0 desse repo tem uma nota
+de "caminho curto" dizendo que so as perguntas abaixo sao obrigatorias.
 
 Vou te dar as informacoes conforme voce pedir:
 - IP, usuario e senha da VPS

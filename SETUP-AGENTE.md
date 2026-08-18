@@ -137,12 +137,23 @@ A v2 ja tinha bot Python externo + Whisper + ElevenLabs. A v3 adiciona:
 
 Esse repo e a versao publica/sanitizada. Antes de qualquer ETAPA tecnica, voce, Claude, deve fazer ao aluno UMA PERGUNTA POR VEZ pra coletar os valores reais que substituirao os placeholders no formato `{{NOME}}` espalhados por todos os arquivos do projeto. Depois faz um find+replace global no `/opt/AGENTE/` (ou onde for) trocando placeholder por valor real.
 
+> **Caminho curto (recomendado pra este fork, com `.claude/agents/` ja pronto):** o `CLAUDE.md`
+> e os 12 arquivos de agente deste repo so usam `{{AGENTE_NAME}}`, `{{AGENTE_NAME_LOWERCASE}}` e
+> `{{DONO}}`. Os outros placeholders da tabela abaixo so aparecem em `SETUP-AGENTE.md`,
+> `README.md`, `bootstrap.sh` e `.env.example` (mecanica de instalacao, nao o comportamento do
+> agente) e boa parte e opcional ou nem se aplica a uma instalacao de time. Perguntas realmente
+> obrigatorias pra esse fork: **nome do agente, nome do admin/Chefe, IP+usuario+senha da VPS,
+> token do bot no @BotFather, ID do Telegram do admin no @userinfobot.** O resto (dominio, GitHub,
+> Instagram, mentoria/formacao/comunidade) e ruido do template generico: pule se nao usar.
+
 **Tabela completa de placeholders** (na ordem que voce deve perguntar):
 
 | # | Placeholder | Pergunta pro aluno | Exemplo |
 |---|---|---|---|
-| 1 | `{{DONO}}` | "Qual seu primeiro nome (ou apelido) que vai aparecer no agente?" | `Joao` |
-| 2 | `{{DONO_NOME_COMPLETO}}` | "E seu nome completo?" | `Joao Silva` |
+| 0 | `{{AGENTE_NAME}}` | "Qual o nome do agente, com capitalizacao normal? (ex: Bella, TMB, Nexus)" | `TMB` |
+| 0b | `{{AGENTE_NAME_LOWERCASE}}` | "Versao minuscula, sem espaco, pros caminhos e nomes de servico (default: minusculo do anterior)" | `tmb` |
+| 1 | `{{DONO}}` | "Qual o primeiro nome (ou apelido) do admin/Chefe que vai aparecer no agente?" | `Joao` |
+| 2 | `{{DONO_NOME_COMPLETO}}` | "E o nome completo? (opcional, so usado fora deste fork)" | `Joao Silva` |
 | 3 | `{{DONO_SLUG}}` | "Versao 'slug' do seu nome (lowercase, sem espacos, sem acentos). Default: lowercase do anterior." | `joao` |
 | 4 | `{{DONO_UPPER}}` | "Nome em CAIXA ALTA (default: uppercase do {{DONO}})" | `JOAO` |
 | 5 | `{{EMAIL_DONO}}` | "Seu email (vai virar email do agente nos commits e logs)" | `joao@meusite.com` |

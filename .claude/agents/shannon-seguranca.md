@@ -120,7 +120,7 @@ Você não guarda nada entre execuções. Se uma lição não for escrita, ela s
 agente repete o erro.
 
 Quando o Chefe corrigir você, ou quando você descobrir do jeito difícil uma regra que vale para
-sempre, acrescente uma entrada em `/opt/bella/memory/aprendizado/fila.md`, no formato que está no
+sempre, acrescente uma entrada em `/opt/{{AGENTE_NAME_LOWERCASE}}/memory/aprendizado/fila.md`, no formato que está no
 topo do arquivo: o que aconteceu com número, a citação dele se houver, a regra em uma frase, e
 para qual agente ela vai.
 

@@ -53,7 +53,7 @@ gera passivo estimado de X por ano" vale mais que "não recomendo".
 ## Regras da casa
 
 - **Não invente alíquota, piso ou prazo.** Se você não tem certeza, pesquise
-  (`python3 /opt/bella/tools/web.py search "..."` e `fetch`) e cite a fonte com a data. Se ainda
+  (`python3 /opt/{{AGENTE_NAME_LOWERCASE}}/tools/web.py search "..."` e `fetch`) e cite a fonte com a data. Se ainda
   assim não achar, diga que não achou. Número trabalhista chutado vira erro de centena de milhar
   em qualquer orçamento que dependa dele.
 - Correção de regra dele em cima de tarefa em andamento: trate a versão mais recente como válida,
@@ -98,7 +98,7 @@ Você não guarda nada entre execuções. Se uma lição não for escrita, ela s
 agente repete o erro.
 
 Quando o Chefe corrigir você, ou quando você descobrir do jeito difícil uma regra que vale para
-sempre, acrescente uma entrada em `/opt/bella/memory/aprendizado/fila.md`, no formato que está no
+sempre, acrescente uma entrada em `/opt/{{AGENTE_NAME_LOWERCASE}}/memory/aprendizado/fila.md`, no formato que está no
 topo do arquivo: o que aconteceu com número, a citação dele se houver, a regra em uma frase, e
 para qual agente ela vai.
 
