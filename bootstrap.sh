@@ -107,6 +107,13 @@ if [[ "$OS" == "ubuntu" ]]; then
   curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/main/.env.example \
     -o /root/.env.example
 
+  # O agente vai rodar sob um usuario dedicado nao-root (criado na ETAPA 3 do
+  # SETUP-AGENTE.md), porque "claude --dangerously-skip-permissions" recusa
+  # rodar como root. Esse usuario precisa atravessar /root pra chegar no
+  # node/claude instalados aqui (~/.nvm). +x sem +r: da pra atravessar o
+  # diretorio, mas nao listar nem ler os arquivos dentro (continuam 600/700).
+  chmod o+x /root
+
   HOME_DIR="/root"
 fi
 
@@ -178,6 +185,33 @@ echo "============================================"
 echo "PROXIMOS PASSOS:"
 echo "============================================"
 echo ""
+if [[ "$OS" == "ubuntu" ]]; then
+echo "IMPORTANTE: 'claude --dangerously-skip-permissions' recusa rodar como"
+echo "root (protecao do proprio CLI). Voce esta como root agora (normal, o"
+echo "bootstrap precisa disso pra instalar pacotes de sistema). NAO tenta"
+echo "rodar 'claude --dangerously-skip-permissions' aqui - vai dar erro."
+echo ""
+echo "Se voce (ou o Claude Code que esta te ajudando) esta operando de FORA"
+echo "da VPS via SSH (MODO B do SETUP-AGENTE.md - o mais comum), ignore o"
+echo "aviso acima: continue mandando comandos via SSH normalmente, a partir"
+echo "da ETAPA 2. O SETUP-AGENTE.md ja cuida de criar o usuario dedicado do"
+echo "agente na ETAPA 3, antes de precisar do modo interativo do Claude."
+echo ""
+echo "Se voce esta DENTRO da VPS agora (terminal como root) e quer usar o"
+echo "proprio Claude Code pra se auto-instalar (MODO A), faca so isso na mao"
+echo "primeiro (a ETAPA 3 do SETUP-AGENTE.md tambem faz isso, mas precisa"
+echo "vir antes de abrir uma sessao interativa):"
+echo "   useradd -m -s /bin/bash SEU_NOME_DE_AGENTE"
+echo "   su - SEU_NOME_DE_AGENTE"
+echo "   claude --dangerously-skip-permissions"
+echo "   (faz o login a primeira vez: tema, conta Claude, autorizar no"
+echo "   navegador, aceitar o modo bypass permissions)"
+echo "   Dentro do Claude, cola:"
+echo "   Leia o arquivo /root/SETUP-AGENTE.md e execute todos os passos"
+echo "   a partir da ETAPA 3 (o usuario ja foi criado). Me faca perguntas"
+echo "   quando precisar de informacao minha."
+echo ""
+else
 echo "1. Logar no Claude com sua conta Pro ou Max:"
 echo "   claude auth login --claudeai"
 echo "   (abre link no navegador, loga, autoriza, cola codigo)"
@@ -190,4 +224,5 @@ echo ""
 echo "   Leia o arquivo SETUP-AGENTE.md e execute todos os passos."
 echo "   Me faca perguntas quando precisar de informacao minha."
 echo ""
+fi
 echo "============================================"

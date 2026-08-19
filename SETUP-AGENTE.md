@@ -1,17 +1,21 @@
-# SETUP-AGENTE.md v3 - Instalacao automatica do agente Claude + Telegram (Bot Externo + agent-manager)
+# SETUP-AGENTE.md v4 - Instalacao do agente Claude + Telegram (fork com time de 12 agentes pronto)
 
 > Claude, esse arquivo e pra voce executar. Pode ser executado em DOIS modos:
 >
-> **MODO A - Local (aluno avancado):** o aluno ja rodou o bootstrap na VPS e esta logado na conta Claude dele. Voce esta rodando DENTRO da VPS. Pula direto pra ETAPA 0.
+> **MODO A - Local (dentro da VPS):** voce esta rodando DENTRO da VPS, como o usuario dedicado do agente (nao como root - veja o aviso no final do `bootstrap.sh` sobre por que). Pula direto pra ETAPA 0.
 >
-> **MODO B - Remoto (aluno leigo):** voce esta rodando no PC do aluno (Mac/Win/Linux). O aluno tem so o IP/senha da VPS na mao. Voce vai fazer SSH na VPS e executar tudo remotamente. Le a secao **"INSTRUCOES PRO CLAUDE QUE ESTA EXECUTANDO REMOTAMENTE"** logo abaixo.
+> **MODO B - Remoto (o mais comum):** voce esta rodando no PC de quem esta instalando (Mac/Win/Linux), controlando a VPS via SSH. A pessoa tem so o IP/senha da VPS na mao. Le a secao **"INSTRUCOES PRO CLAUDE QUE ESTA EXECUTANDO REMOTAMENTE"** logo abaixo.
 >
 > Sua missao em qualquer modo: seguir esse manual do inicio ao fim, fazendo perguntas claras quando precisar, e entregar:
-> - Agente principal (Naia) rodando 24/7 no tmux
-> - 5 subagentes especializados
-> - Bot externo Python (audio bidirecional)
-> - agent-manager.py via PM2 (porta 3600 + Caddy + Cloudflare tunnel)
-> - (Opcional) Clone do {{DONO}} SDR personalizado
+> - Agente principal rodando 24/7 no tmux, usando o `CLAUDE.md` e os 12 subagentes que **ja vem prontos neste repo** em `.claude/agents/` (voce NAO cria agente do zero - so substitui os placeholders na ETAPA 0 e copia os arquivos)
+> - Bot externo Python (audio bidirecional) - `naia-bot/bot.py`, tambem ja pronto no repo
+> - Servico de memoria vetorial (`naia-bot/memory_api.py`, porta 3007)
+> - Crontab de manutencao (healthcheck, promessas, backup - ver `crontab-referencia.txt`)
+>
+> Esse fork **nao inclui** `agent-manager.py`/PM2/Caddy/tunel Cloudflare nem "Clone SDR" -
+> isso existia numa versao anterior generica do template e nao faz parte do que este repo
+> entrega. Se alguma etapa abaixo mencionar isso, e sinal de que ficou desatualizada - ignore
+> e siga o que esta descrito aqui em cima.
 
 ---
 
@@ -79,24 +83,49 @@ Vai demorar 5-10 min. Avise o aluno: "to instalando Node, Postgres, Caddy e depe
 
 ### Auth Claude na VPS
 
-A autenticacao Claude precisa de browser. Voce nao consegue fazer isso 100% remoto. Estrategia:
+A autenticacao Claude precisa de browser. Voce nao consegue fazer isso 100% remoto, e o
+comando `claude auth submit` **nao existe** (nao invente flag - `claude auth --help` so
+tem `login`, `logout`, `status`). O jeito que funciona de verdade, testado ao vivo:
 
-1. Inicie o login na VPS:
-   ```bash
-   ssh_run "claude auth login --claudeai"
-   ```
-2. O comando vai imprimir uma URL. Capture essa URL e mande pro aluno.
-3. Diga pro aluno: "Abra essa URL **no navegador do seu PC**, faca login com sua conta Claude Pro/Max, autorize, copie o codigo de volta pra mim."
-4. Quando o aluno colar o codigo, voce envia pra VPS via:
-   ```bash
-   ssh_run "echo 'CODIGO_AQUI' | claude auth submit"
-   ```
-   (ou roda `claude auth login` em modo interativo via heredoc se a CLI exigir)
-5. Valida:
-   ```bash
-   ssh_run "claude auth status"
-   ```
-   Deve mostrar `"loggedIn": true`.
+**Passo 1 - sessao tmux pra poder colar o codigo.** `claude auth login`/`setup-token` sao
+interativos (TUI em modo raw), entao voce precisa deles rodando dentro de uma sessao tmux
+pra poder mandar o codigo depois via `tmux send-keys`/`paste-buffer`:
+```bash
+ssh_run "tmux new-session -d -s authsetup -x 200 -y 50 bash"
+ssh_run "tmux send-keys -t authsetup 'claude setup-token' Enter"
+sleep 5
+ssh_run "tmux capture-pane -t authsetup -p -J"
+```
+Isso imprime uma URL com `Paste code here if prompted >` no final. Capture a URL e manda
+pra pessoa que esta instalando: "Abra essa URL **no navegador do seu PC** (de preferencia
+com sua conta Claude separada do dia a dia, pra nao dividir a janela de uso de 5h - pergunte
+se ela quer isso antes), autorize, copie o codigo de volta pra mim."
+
+**Passo 2 - cola o codigo de volta:**
+```bash
+ssh_run "tmux set-buffer -t authsetup 'CODIGO_AQUI' && tmux paste-buffer -t authsetup && tmux send-keys -t authsetup Enter"
+sleep 5
+ssh_run "tmux capture-pane -t authsetup -p -J"
+```
+Se aparecer `Long-lived authentication token created successfully!`, funcionou. Guarda o
+token (comeca com `sk-ant-oat01-`) em `/root/.agente-secrets.env`:
+```bash
+ssh_run "echo 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...' >> /root/.agente-secrets.env && chmod 600 /root/.agente-secrets.env"
+```
+
+**Atencao - esse token NAO pula o login da sessao interativa.** Mesmo com
+`CLAUDE_CODE_OAUTH_TOKEN` no ambiente, a primeira vez que voce abrir
+`claude --dangerously-skip-permissions` de verdade (dentro da sessao tmux 24/7 do agente, na
+ETAPA 9) ele ainda vai pedir: tema, metodo de login (escolhe "1. Claude account with
+subscription"), o mesmo fluxo de colar codigo (repete o Passo 1/2 acima dentro **dessa**
+sessao tmux, que sera a definitiva), aviso de seguranca, "trust this folder?" (sim), e o
+aviso de bypass permissions (a opcao certa e a **segunda**, "Yes, I accept" - o cursor
+comeca na primeira por padrao, manda `Down` antes do `Enter`). So depois disso o prompt
+`❯` aparece e o agente esta pronto pra receber mensagens do bot.
+
+O `setup-token` do Passo 1 ainda vale a pena gerar: alguns scripts em `tools/` podem rodar
+`claude --print` de forma nao-interativa, e esses sim usam `CLAUDE_CODE_OAUTH_TOKEN` direto
+do ambiente sem pedir login de novo.
 
 ### Continue o setup remoto
 
@@ -110,15 +139,20 @@ Apos systemd subir e bot estar online, peca pro aluno mandar um `/start` no bot 
 
 ---
 
-## v3 - O QUE MUDA VS v2
+## O QUE ESSE FORK ENTREGA
 
-A v2 ja tinha bot Python externo + Whisper + ElevenLabs. A v3 adiciona:
-
-1. **agent-manager.py** (Python via PM2): gerencia jobs longos sem travar a Naia. Roda na porta 3600 com proxy reverso via Caddy. Acessivel em `https://AGENTE.dominio.com`.
-2. **Suite de subagentes especializados**: paulo-dev, juliana-ops, jonathan-copy, rafael-projetos, davi-sdr.
-3. **Memoria vetorial PostgreSQL + pgvector**: HNSW index pra busca semantica em milhares de mensagens.
-4. **Bot externo robusto**: Restart=always via systemd, polling continuo independente do Claude.
-5. **Audio bidirecional**: Whisper PT-BR (entrada) e ElevenLabs TTS (saida).
+1. **`CLAUDE.md` + 12 subagentes prontos** em `.claude/agents/`: paulo-dev, juliana-ops,
+   jonathan-copy, rafael-projetos, helena-trabalhista, marcos-dados, clara-contabil,
+   rafa-custos, sofia-qa, shannon-seguranca, lari-governanca, aria-arquivista. So precisa
+   trocar os placeholders (ETAPA 0), nao criar do zero.
+2. **Memoria vetorial PostgreSQL + pgvector**: embeddings 384-dim (fastembed local, sem
+   OpenAI), HNSW index pra busca semantica. Ver `database/schema.sql`.
+3. **Bot externo Python robusto**: `naia-bot/bot.py`, long polling, audio bidirecional
+   (faster-whisper local na entrada, ElevenLabs/Gemini na saida), `Restart=always` via
+   systemd, independente da sessao do Claude.
+4. **`tools/`**: scripts de apoio (log de delegacao, promessas, aprendizado, backup,
+   deteccao de intrusao, buscas web/CNPJ, browser automation) que o `CLAUDE.md` e os
+   agentes ja esperam encontrar em `/opt/AGENTE/tools/`.
 
 ---
 
@@ -177,7 +211,7 @@ Esse repo e a versao publica/sanitizada. Antes de qualquer ETAPA tecnica, voce, 
 | 24 | `{{MENTORIA_DONO}}` | "(Opcional) Nome da sua mentoria" | `Mentoria X` |
 | 25 | `{{FORMACAO_DONO}}` | "(Opcional) Nome da sua formacao/curso" | `Formacao X em IA` |
 | 26 | `{{COMUNIDADE_DONO}}` | "(Opcional) Nome da sua comunidade paga" | `Comunidade X` |
-| 27 | `{{SENHA_PADRAO}}` | "Senha admin pro agent-manager (TROCA depois pelo painel!). Default: ano+empresa." | `meusite2026` |
+| 27 | `{{SENHA_PADRAO}}` | "(Nao se aplica a esse fork - so usado em painel web que este repo nao inclui. Pule.)" | `meusite2026` |
 | 28 | `{{GITHUB_USERNAME}}` | "Seu username no GitHub" | `joaodev` |
 
 **Como executar a substituicao depois de coletar tudo:**
@@ -207,7 +241,7 @@ EOF
 
 # Aplica em todos os arquivos texto do projeto
 while IFS='|' read -r placeholder valor; do
-  find . -type f \( -name "*.md" -o -name "*.txt" -o -name "*.sh" -o -name "*.py" -o -name "*.sql" -o -name "*.json" -o -name "*.example" -o -name "*.plist.example" -o -name ".env*" \) \
+  find . -type f \( -name "*.md" -o -name "*.txt" -o -name "*.sh" -o -name "*.py" -o -name "*.sql" -o -name "*.json" -o -name "*.example" -o -name "*.plist.example" -o -name "*.service" -o -name ".env*" \) \
     -print0 | xargs -0 sed -i "s|$placeholder|$valor|g"
 done < /tmp/replace.txt
 ```
@@ -245,22 +279,25 @@ curl -fsSL https://raw.githubusercontent.com/ermersonbruno77/bella-instalador/ma
 
 ## ETAPA 2 - CLAUDE AUTH LOGIN
 
-Ja foi feito pelo aluno. Valida:
+Confirma se ja existe um `CLAUDE_CODE_OAUTH_TOKEN` em `/root/.agente-secrets.env`:
 ```bash
-claude auth status
+grep -c CLAUDE_CODE_OAUTH_TOKEN /root/.agente-secrets.env 2>/dev/null || echo 0
 ```
 
-Deve mostrar `"loggedIn": true`.
+Se der `0`, siga o processo completo descrito em **"Auth Claude na VPS"** no topo deste
+arquivo (secao de instrucoes remotas) - vale tanto pra MODO A quanto MODO B. Resumindo:
+`claude setup-token` dentro de uma sessao tmux, capturar o link, pessoa autoriza no
+navegador, colar o codigo de volta via `tmux paste-buffer`. Isso gera o token de longa
+duracao, usado por scripts `--print` nao-interativos.
 
-Se nao logou:
-```bash
-claude auth login --claudeai
-```
-Pega o link, manda pro aluno, ele autoriza, copia o codigo, cola.
+**Isso NAO substitui o login da sessao 24/7 do agente** - aquele acontece na ETAPA 9,
+dentro da sessao tmux definitiva, e pede o mesmo fluxo de navegador de novo (a CLI nao
+usa o `CLAUDE_CODE_OAUTH_TOKEN` do ambiente pra pular login em modo interativo). Nao pule
+esse aviso achando que ja resolveu aqui.
 
 ---
 
-## ETAPA 3 - CONFIGURAR .ENV (variaveis de ambiente)
+## ETAPA 3 - USUARIO DEDICADO + CLONAR O REPO + .ENV
 
 Pergunta ao aluno e guarda:
 
@@ -273,25 +310,63 @@ Pergunta ao aluno e guarda:
 | `OPENAI_API_KEY` | platform.openai.com/api-keys | opcional (audio) |
 | `ELEVENLABS_API_KEY` | elevenlabs.io/profile | opcional (audio) |
 | `ELEVENLABS_VOICE_ID` | elevenlabs.io/voice-library | opcional |
-| `GITHUB_TOKEN` | github.com/settings/tokens (PAT classic) | opcional (deploy) |
-| `VERCEL_TOKEN` | vercel.com/account/tokens | opcional (deploy) |
-| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com/profile/api-tokens (DNS edit) | opcional (tunnel) |
-| `ANTHROPIC_API_KEY` | console.anthropic.com (so se usar API direta) | opcional |
 
 **ATENCAO**: ele NAO precisa fornecer tudo de uma vez. So as obrigatorias. As outras pode adicionar depois.
 
-Cria estrutura base:
+**O `useradd` abaixo NAO e opcional.** `claude --dangerously-skip-permissions` recusa
+rodar como root ("cannot be used with root/sudo privileges for security reasons") -
+testado ao vivo, nao e suposicao. A sessao 24/7 do agente TEM que rodar sob um usuario
+comum, e o bot Python (que injeta mensagem via `tmux send-keys`) precisa rodar sob **o
+mesmo usuario**, senao cada um enxerga um socket de tmux diferente e o bot nunca acha a
+sessao do agente.
+
 ```bash
 useradd -m -s /bin/bash AGENTE 2>/dev/null || echo "ja existe"
-mkdir -p /opt/AGENTE/{logs,knowledge,workspace,hooks,cron-scripts,memory-service,agent-manager,.claude/agents}
-mkdir -p /opt/AGENTE-bot/{inbox,outbox,sent,processed,state,logs,audio/incoming,audio/outgoing}
-chown -R AGENTE:AGENTE /opt/AGENTE /opt/AGENTE-bot
+
+# Clona o proprio repo do fork pra dentro da VPS - e daqui que vem o CLAUDE.md,
+# os 12 agentes, tools/, database/schema.sql, o bot etc. Nao recria nada do zero.
+git clone --depth 1 https://github.com/ermersonbruno77/bella-instalador.git /opt/AGENTE-src
+
+mkdir -p /opt/AGENTE/{logs,knowledge,workspace,hooks,cron-scripts,.claude/agents}
+mkdir -p /opt/AGENTE-bot/{inbox,outbox,sent,processed,state,logs,audio/incoming,audio/outgoing,images,docs}
+
+cp /opt/AGENTE-src/CLAUDE.md /opt/AGENTE/CLAUDE.md
+cp /opt/AGENTE-src/CONCISAO.md /opt/AGENTE/CONCISAO.md 2>/dev/null || true
+cp -r /opt/AGENTE-src/.claude/agents/. /opt/AGENTE/.claude/agents/
+cp -r /opt/AGENTE-src/knowledge/. /opt/AGENTE/knowledge/
+cp -r /opt/AGENTE-src/tools /opt/AGENTE/tools
+cp -r /opt/AGENTE-src/database /opt/AGENTE/database
+cp -r /opt/AGENTE-src/systemd /opt/AGENTE/systemd
+cp -r /opt/AGENTE-src/skills /opt/AGENTE/skills 2>/dev/null || true
+
+cp /opt/AGENTE-src/naia-bot/bot.py /opt/AGENTE-bot/bot.py
+cp /opt/AGENTE-src/naia-bot/healthcheck.sh /opt/AGENTE-bot/healthcheck.sh
+cp /opt/AGENTE-src/naia-bot/consolidate-conversations.py /opt/AGENTE-bot/consolidate-conversations.py
+cp /opt/AGENTE-src/naia-bot/memory_api.py /opt/AGENTE-bot/memory_api.py
 ```
 
-Cria `.env` em `/opt/AGENTE/.env` baseado no `.env.example` (copia o template do repo, substitui placeholders).
+**So agora** roda a substituicao de placeholders da ETAPA 0 (o find+sed), apontando pra
+`/opt/AGENTE` e `/opt/AGENTE-bot` (nao pro `/opt/AGENTE-src`, que pode ficar com os
+tokens `{{...}}` originais ou ser apagado depois - nao roda nada a partir dele).
+
+Cria `/opt/AGENTE-bot/.env` (o bot le esse arquivo direto no codigo, formato `CHAVE=valor`
+por linha, sem aspas):
+```
+TELEGRAM_BOT_TOKEN=<TOKEN>
+ALLOWED_USERS=<ID>
+TMUX_SESSION=AGENTE
+TMUX_USER=AGENTE
+DEBOUNCE_SECONDS=8
+ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
+```
+(a ETAPA 4 acrescenta `PG_PASSWORD` nesse mesmo arquivo - `memory_api.py` e
+`consolidate-conversations.py` leem a senha do Postgres daqui, nao de
+`/root/.agente-secrets.env`, porque esse ultimo so root consegue ler e esses dois
+processos rodam como o usuario AGENTE.)
+
 ```bash
-chmod 600 /opt/AGENTE/.env
-chown AGENTE:AGENTE /opt/AGENTE/.env
+chmod 600 /opt/AGENTE-bot/.env
+chown -R AGENTE:AGENTE /opt/AGENTE /opt/AGENTE-bot
 ```
 
 ---
@@ -300,8 +375,10 @@ chown AGENTE:AGENTE /opt/AGENTE/.env
 
 ```bash
 PGPASS=$(openssl rand -hex 24)
-echo "PG_PASSWORD_AGENTE=$PGPASS" >> /root/.agente-secrets.env
+echo "PG_PASSWORD=$PGPASS" >> /root/.agente-secrets.env
 chmod 600 /root/.agente-secrets.env
+# Copia tambem pro .env do bot (usuario AGENTE nao le /root/.agente-secrets.env)
+echo "PG_PASSWORD=$PGPASS" >> /opt/AGENTE-bot/.env
 
 sudo -u postgres psql -c "CREATE USER AGENTE WITH PASSWORD '$PGPASS';"
 sudo -u postgres psql -c "CREATE DATABASE AGENTE_memory OWNER AGENTE;"
@@ -309,232 +386,177 @@ sudo -u postgres psql -d AGENTE_memory -c "CREATE EXTENSION IF NOT EXISTS vector
 sudo -u postgres psql -d AGENTE_memory -c "GRANT ALL PRIVILEGES ON DATABASE AGENTE_memory TO AGENTE;"
 ```
 
-Aplica `schema.sql` (criar arquivo `/opt/AGENTE/schema.sql` com as tabelas):
+Aplica o `schema.sql` que **ja vem pronto no repo** (`/opt/AGENTE/database/schema.sql`,
+copiado na ETAPA 3) - nao cria as tabelas na mao, esse arquivo ja tem
+`conversation_history`, `memory_chunks`, `memory_facts`, `transcript_chunks`,
+`agente_atividade`, `promessas`, `lembretes` etc, todas com `embedding vector(384)`
+(fastembed local, **nao** 1536 - esse era o tamanho do embedding da OpenAI, esse fork
+nao usa OpenAI pra isso) e os index HNSW ja inclusos.
 
-- `conversation_history` (id, role, content, embedding vector(1536), created_at)
-- `memory_chunks` (id, source, content, embedding, metadata jsonb)
-- `memory_facts` (id, fact, embedding, created_at)
-- `transcript_chunks` (id, source_call, content, embedding)
-
-Cria index HNSW em todas as colunas `embedding`:
-```sql
-CREATE INDEX ON conversation_history USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON memory_chunks USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON memory_facts USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON transcript_chunks USING hnsw (embedding vector_cosine_ops);
-```
-
-Aplica:
 ```bash
-sudo -u postgres psql -d AGENTE_memory -f /opt/AGENTE/schema.sql
+sudo -u postgres psql -d AGENTE_memory -f /opt/AGENTE/database/schema.sql
 ```
 
-Adiciona ao `.env`:
+**Passo que falta em qualquer tutorial generico e QUEBRA o app se pular**: aplicar o
+schema como `postgres` (superuser) deixa as tabelas com **dono `postgres`**, nao `AGENTE`.
+O usuario `AGENTE` so tem os privilegios de DATABASE (`GRANT ALL ... ON DATABASE`
+la em cima), que nao da acesso de escrita nas tabelas em si. Sem o passo abaixo, todo
+`INSERT`/`UPDATE` do agente falha com "permission denied":
+```bash
+sudo -u postgres psql -d AGENTE_memory -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO AGENTE; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO AGENTE; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO AGENTE;"
 ```
-DATABASE_URL=postgres://AGENTE:PGPASS@127.0.0.1:5432/AGENTE_memory
+
+Confere que ficou 384 (nao 1536) antes de seguir:
+```bash
+sudo -u postgres psql -d AGENTE_memory -c "\d conversation_history" | grep embedding
 ```
 
 ---
 
-## ETAPA 5 - CONFIGURAR BOT TELEGRAM
+## ETAPA 5 - INSTALAR DEPENDENCIAS PYTHON + SUBIR BOT E MEMORY API
 
-Pergunta ao aluno o `TELEGRAM_BOT_TOKEN` (do @BotFather) e o `ALLOWED_USERS` (do @userinfobot).
-
-Como criar o bot (passo pro aluno):
+Se ainda nao perguntou, pergunta o `TELEGRAM_BOT_TOKEN` (do @BotFather) e o
+`ALLOWED_USERS` (do @userinfobot) - como criar o bot, passo pra pessoa:
 1. Telegram, busca `@BotFather`, manda `/newbot`
 2. Escolhe nome (ex "Assistente do Jonas")
 3. Escolhe username terminando em `bot` (ex `jonas_assistente_bot`)
 4. Copia o token retornado
 5. Busca `@userinfobot`, manda qualquer msg, copia o ID numerico
 
-Salva no `/opt/AGENTE-bot/.env`:
-```
-TELEGRAM_BOT_TOKEN=<TOKEN>
-ALLOWED_USERS=<ID>
-TMUX_SESSION=AGENTE
-TMUX_USER=AGENTE
-OPENAI_API_KEY=<OPENAI_KEY_OU_VAZIO>
-ELEVENLABS_API_KEY=<ELEVENLABS_KEY_OU_VAZIO>
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-DEBOUNCE_SECONDS=8
-```
-
-Cria `bot.py` em `/opt/AGENTE-bot/bot.py` (codigo Python completo: long polling, audio Whisper entrada, ElevenLabs saida, watch outbox, tmux send-keys).
-
-Cria systemd service `/etc/systemd/system/AGENTE-bot.service`:
-```ini
-[Unit]
-Description=AGENTE Telegram Bot (external daemon)
-After=network.target
-
-[Service]
-Type=simple
-User=AGENTE
-WorkingDirectory=/opt/AGENTE-bot
-ExecStart=/usr/bin/python3 /opt/AGENTE-bot/bot.py
-Restart=always
-RestartSec=5
-EnvironmentFile=/opt/AGENTE-bot/.env
-
-[Install]
-WantedBy=multi-user.target
-```
-
+`TELEGRAM_BOT_TOKEN` e `ALLOWED_USERS` ja devem estar no `/opt/AGENTE-bot/.env` desde a
+ETAPA 3 (se nao, adiciona agora). `bot.py`, `healthcheck.sh`, `consolidate-conversations.py`
+e `memory_api.py` **ja foram copiados** na ETAPA 3 - nao recria nada, so instala as
+dependencias Python que eles precisam:
 ```bash
+pip3 install requests fastapi 'uvicorn[standard]' fastembed pydantic psycopg2-binary
+```
+
+Copia os templates de systemd **prontos no repo** (foram parar em `/opt/AGENTE/systemd/`
+na ETAPA 3, entao a substituicao de placeholders da ETAPA 0 ja trocou
+`{{AGENTE_NAME_LOWERCASE}}` pelo nome real dentro deles). Eles ja usam `Type=oneshot` +
+`RemainAfterExit=yes` pro service do agente (NAO `Type=forking`: uma sessao tmux daemoniza
+sozinha, `forking` faz o systemd perder o rastro e reiniciar em loop - testado ao vivo, os
+dois formatos errados foram tentados antes de chegar nesse):
+```bash
+cp /opt/AGENTE/systemd/start-agente.sh /usr/local/bin/start-agente.sh
+chmod +x /usr/local/bin/start-agente.sh
+cp /opt/AGENTE/systemd/agente-agent.service /etc/systemd/system/AGENTE-agent.service
+cp /opt/AGENTE/systemd/agente-bot.service /etc/systemd/system/AGENTE-bot.service
+cp /opt/AGENTE/systemd/agente-memory.service /etc/systemd/system/AGENTE-memory.service
 systemctl daemon-reload
+```
+(O nome do arquivo `/etc/systemd/system/AGENTE-agent.service` acima usa "AGENTE" como
+placeholder de nomenclatura pra voce trocar pelo nome real ao rodar - ex: `tmb-agent.service`
+- diferente do conteudo interno do arquivo, que ja veio substituido.)
+
+Sobe o bot e o servico de memoria agora (o agente em si so na ETAPA 9, depois do login):
+```bash
 systemctl enable --now AGENTE-bot
-systemctl status AGENTE-bot
+systemctl enable --now AGENTE-memory
+sleep 3
+systemctl status AGENTE-bot --no-pager | head -10
+systemctl status AGENTE-memory --no-pager | head -10
+curl -s http://127.0.0.1:3007/health   # deve responder {"ok":true,...}
 ```
 
 ---
 
-## ETAPA 6 - PERSONALIZAR CLAUDE.MD
+## ETAPA 6 - CONFERIR CLAUDE.MD E OS 12 AGENTES (JA PRONTOS)
 
-Pergunta:
-- Nome do dono (ex "Jonas")
-- Ramo/personalidade ("sou mentor de musica, quero atender duvidas dos alunos")
-- Tom desejado (formal, casual, brincalhao)
+Nao cria nada nessa etapa - `CLAUDE.md` e os 12 arquivos em `.claude/agents/` **ja foram
+copiados** do repo na ETAPA 3, com os placeholders (`{{AGENTE_NAME}}`, `{{DONO}}`, etc)
+ja substituidos pela ETAPA 0. So confere que ficou tudo certo:
 
-Cria `/opt/AGENTE/CLAUDE.md` com:
+```bash
+grep -rc "{{[A-Z_]*}}" /opt/AGENTE/CLAUDE.md /opt/AGENTE/.claude/agents/ | grep -v ':0' || echo "OK - zero placeholder sobrando"
+ls /opt/AGENTE/.claude/agents/   # deve listar os 12 arquivos .md
+```
 
-1. PROTOCOLO DE BOOT (recuperar contexto do banco, ler arquivos persistentes)
-2. Quem e o agente (nome, papel, missao customizado pra esse aluno)
-3. Quem e o dono (info coletada acima)
-4. Hierarquia (Dono manda, Naia orquestra, Juliana coordena, subagentes executam)
-5. REGRA SUPREMA - PROTOCOLO DE CONVERSA 3 FASES (igual ao da Naia)
-6. ARQUITETURA DE ORQUESTRADORA (Naia delega, nao executa)
-7. Lista dos 5 subagentes
-8. Como responder no Telegram (outbox JSON)
-9. Voice ON/OFF (quando usar audio)
-10. Anti-patterns (sem travessoes, sem voz de IA)
-
-Cria os 5 subagentes em `/opt/AGENTE/.claude/agents/`:
-- `paulo-dev.md` (dev full-stack)
-- `juliana-ops.md` (sub-gerente, design, processos)
-- `jonathan-copy.md` (copywriter, roteiros)
-- `rafael-projetos.md` (gestao de projetos)
-- `davi-sdr.md` (SDR vendas SPIN)
-
-Cada um com personalidade dedicada e missao clara.
+Se a pessoa quiser personalizar tom, adicionar conhecimento especifico do negocio dela, ou
+tirar algum dos 12 agentes que nao faz sentido pro caso dela, isso e edicao manual do
+`/opt/AGENTE/CLAUDE.md` e dos arquivos em `.claude/agents/` - pergunta se ela quer isso
+agora ou prefere ajustar depois (nao bloqueia o resto da instalacao).
 
 ---
 
-## ETAPA 7 - SUBIR AGENT-MANAGER.PY VIA PM2
+## ETAPA 7 E 8 - NAO SE APLICAM A ESSE FORK
 
-`agent-manager.py` e um servico HTTP Python (FastAPI ou Flask) que expoe endpoints internos pra:
-- Trigger subagentes em background
-- Webhooks externos (Insta DM, integracoes)
-- Healthcheck e status
-
-Roda na porta 3600.
-
-```bash
-mkdir -p /opt/AGENTE/agent-manager
-cd /opt/AGENTE/agent-manager
-
-# Cria agent-manager.py minimo (FastAPI):
-#   GET /health        - healthcheck
-#   POST /webhook/...  - receber eventos externos
-
-pip3 install fastapi uvicorn psycopg2-binary requests anthropic
-
-pm2 start agent-manager.py --name agent-manager --interpreter python3
-pm2 save
-pm2 startup    # gera comando systemctl, executa o que retornar
-```
-
-Configura Caddy pra proxy HTTPS:
-```bash
-cat > /etc/caddy/Caddyfile << EOF
-AGENTE.dominio.com {
-    reverse_proxy 127.0.0.1:3600
-}
-EOF
-systemctl reload caddy
-```
-
-DNS no Cloudflare (via API):
-```bash
-curl -X POST "https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records" \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data '{"type":"A","name":"AGENTE","content":"VPS_IP","proxied":true}'
-```
+`agent-manager.py`/PM2/Caddy/tunel Cloudflare e "Clone SDR" fazem parte de uma versao
+generica mais antiga do template, de antes deste fork existir. Esse repo **nao** entrega
+esses dois componentes - pula direto pra ETAPA 9. Se a pessoa realmente quiser algo
+assim depois, e customizacao fora do escopo do instalador (nao trava a instalacao base).
 
 ---
 
-## ETAPA 8 - SUBIR CLONE DO {{DONO_UPPER}} SDR (CONFIG PERSONALIZADO)
+## ETAPA 9 - PRIMEIRO BOOT DO AGENTE (LOGIN INTERATIVO) E VALIDAR
 
-Pergunta ao aluno se ele quer ativar o Clone SDR (responder DMs Insta como SDR).
-
-Se sim, coleta:
-- Nome do produto/oferta principal
-- Pitch curto (1-2 frases)
-- Preco e termos
-- Link de checkout
-- Tom (consultivo, agressivo, casual)
-- Limites (quantas DMs por dia, horario de funcionamento)
-
-Cria `/opt/AGENTE/.claude/agents/clone-sdr.md` com a personalidade configurada (rapport + SPIN + agendamento).
-
-Configura webhook (se aluno tem CRM/integracao):
+Sobe a sessao tmux do agente pela primeira vez:
 ```bash
-# Endpoint no agent-manager: POST /webhook/insta-dm
-# Recebe DM, salva no banco, dispara subagente clone-sdr
+systemctl enable --now AGENTE-agent
+sleep 5
+sudo -u AGENTE tmux ls   # deve listar uma sessao chamada AGENTE
 ```
 
-Atualiza `.env`:
-```
-SDR_OFFER_NAME=<NOME>
-SDR_PITCH=<PITCH>
-SDR_PRICE=<PRECO>
-SDR_CHECKOUT_URL=<URL>
-SDR_DAILY_LIMIT=50
-SDR_HOURS=09-22
-```
+**Primeiro boot sempre pede um assistente interativo** (mesmo com `CLAUDE_CODE_OAUTH_TOKEN`
+setado - explicado na ETAPA 2). Acompanha via `tmux capture-pane` e vai respondendo:
 
----
-
-## ETAPA 9 - RESTART E VALIDAR
-
-Reinicia tudo:
 ```bash
-systemctl restart AGENTE-bot
-systemctl restart AGENTE
-pm2 restart agent-manager
-systemctl reload caddy
+sudo -u AGENTE tmux capture-pane -t AGENTE -p -J
 ```
+
+Na ordem que aparece:
+1. **Escolha de tema** -> `sudo -u AGENTE tmux send-keys -t AGENTE Enter` (aceita o default)
+2. **"Select login method"** -> `Enter` de novo (aceita "1. Claude account with subscription")
+3. **URL de autorizacao** aparece com `Paste code here if prompted >`. Repete o fluxo de
+   colar codigo da ETAPA 2 (manda a URL pra pessoa, ela autoriza, ela manda o codigo de
+   volta, voce cola com `tmux set-buffer`/`paste-buffer` **nessa sessao `AGENTE`**, nao
+   mais na sessao `authsetup` temporaria da ETAPA 2):
+   ```bash
+   sudo -u AGENTE tmux set-buffer -t AGENTE 'CODIGO_AQUI' && sudo -u AGENTE tmux paste-buffer -t AGENTE && sudo -u AGENTE tmux send-keys -t AGENTE Enter
+   ```
+4. **"Login successful. Press Enter to continue"** -> `Enter`
+5. **"Security notes"** -> `Enter`
+6. **"Is this a project you created or one you trust?"** -> `Enter` (aceita "1. Yes, I trust this folder")
+7. **"WARNING: Bypass Permissions mode"** -> o cursor comeca em "1. No, exit" - manda
+   `Down` e so depois `Enter`:
+   ```bash
+   sudo -u AGENTE tmux send-keys -t AGENTE Down
+   sudo -u AGENTE tmux send-keys -t AGENTE Enter
+   ```
+
+Confere no fim que apareceu o prompt `❯` e `bypass permissions on` no rodape - so ai o
+agente esta realmente no ar e pronto pra receber mensagem do bot.
 
 Valida em paralelo:
 
 ```bash
 # Bot externo vivo
 systemctl is-active AGENTE-bot
+systemctl is-active AGENTE-memory
 
-# Naia Claude vivo
-systemctl is-active AGENTE
-su - AGENTE -c "tmux ls" | grep AGENTE
+# Agente Claude vivo
+systemctl is-active AGENTE-agent
+sudo -u AGENTE tmux ls | grep AGENTE
 
 # Banco respondendo
 sudo -u AGENTE psql -d AGENTE_memory -c "SELECT COUNT(*) FROM conversation_history"
 
-# agent-manager respondendo
-curl -s http://127.0.0.1:3600/health
-curl -s https://AGENTE.dominio.com/health
+# memory API respondendo
+curl -s http://127.0.0.1:3007/health
 
-# Healthcheck rodando
-crontab -u AGENTE -l | grep healthcheck
-
-# Bot recebe mensagem
-# (manda "oi" do Telegram, deve aparecer em /opt/AGENTE-bot/inbox/)
+# Crontab de manutencao instalado (deve ser no ROOT, nao no AGENTE - ver crontab-referencia.txt)
+crontab -l | grep healthcheck
 ```
 
+**Teste final de verdade**: pede pra pessoa mandar uma mensagem pro bot dela no Telegram.
+Confirma que apareceu em `/opt/AGENTE-bot/inbox/` e, depois de alguns segundos/minutos
+(o agente processa e responde), que apareceu em `/opt/AGENTE-bot/sent/`. So ai a
+instalacao esta de fato completa - nao declara sucesso so por systemd estar `active`.
+
 Se tudo OK, manda mensagem final pro aluno:
-- URL agent-manager: `https://AGENTE.dominio.com`
 - Bot Telegram: `@bot_username`
-- Comandos uteis (logs, restart, ver tela)
-- Custos mensais
-- Como customizar subagentes
+- Comandos uteis (logs, restart, ver tela - proxima secao)
+- Como customizar os agentes em `.claude/agents/`
 
 ---
 
@@ -542,29 +564,34 @@ Se tudo OK, manda mensagem final pro aluno:
 
 **Logs ao vivo:**
 ```bash
-tail -f /opt/AGENTE/logs/agent.log         # Naia Claude
-tail -f /opt/AGENTE-bot/logs/bot.log       # Bot Python
-pm2 logs agent-manager                      # agent-manager
-journalctl -u AGENTE -f                     # systemd Naia
+tail -f /opt/AGENTE-bot/logs/bot.log        # Bot Python
+journalctl -u AGENTE-memory -f              # memory API
+journalctl -u AGENTE-bot -f                 # systemd do bot
+sudo -u AGENTE tmux attach -t AGENTE        # tela do agente ao vivo (ver abaixo)
 ```
 
 **Restart:**
 ```bash
-systemctl restart AGENTE          # restart Naia
-systemctl restart AGENTE-bot      # restart bot
-pm2 restart agent-manager         # restart manager
+systemctl restart AGENTE-agent    # restart do agente (mata a sessao tmux e sobe outra)
+systemctl restart AGENTE-bot      # restart do bot
+systemctl restart AGENTE-memory   # restart do servico de memoria
 ```
+Atencao: `restart AGENTE-agent` mata a sessao tmux e cria outra vazia - **nao** refaz o
+login sozinho na maioria dos casos porque a credencial fica salva em
+`/home/AGENTE/.claude/` apos o primeiro login (so a primeira vez pede o assistente
+interativo inteiro da ETAPA 9). Se depois de um restart a sessao nao voltar sozinha,
+confere `journalctl -u AGENTE-agent -n 50` antes de repetir o fluxo de login.
 
 **Tela do Claude ao vivo:**
 ```bash
-su - AGENTE -c "tmux attach -t AGENTE"
+sudo -u AGENTE tmux attach -t AGENTE
 # pra sair sem fechar: Ctrl+B, D
 ```
 
 **Editar personalidade:**
 ```bash
 nano /opt/AGENTE/CLAUDE.md
-systemctl restart AGENTE
+systemctl restart AGENTE-agent
 ```
 
 **Editar subagente:**
@@ -579,17 +606,20 @@ nano /opt/AGENTE/.claude/agents/paulo-dev.md
 
 | Problema | Solucao |
 |---|---|
-| Bot reage mas nao responde | `systemctl is-active AGENTE`. Se inactive, restart. |
-| Mensagens duplicadas | Confere se `enabledPlugins.telegram` NAO esta no `~/.claude/settings.json` (foi removido na v3) |
-| Audio nao transcreve | Confere `OPENAI_API_KEY` no `/opt/AGENTE-bot/.env` |
-| Audio nao sai | Confere `ELEVENLABS_API_KEY` |
-| `https://AGENTE.dominio.com` 502 | Manual: `pm2 restart agent-manager && systemctl reload caddy` |
-| Agente nao lembra conversa antiga | Cron `consolidate-conversations.py` ativo? Banco crescendo? |
-| VPS reboot e nao volta | `systemctl is-enabled AGENTE AGENTE-bot` deve dar `enabled` |
+| `claude --dangerously-skip-permissions` da erro "cannot be used with root" | Voce esta como root. Precisa rodar como o usuario dedicado (`sudo -u AGENTE ...` ou `su - AGENTE`), nao root. Ver ETAPA 3. |
+| `AGENTE-agent.service` fica reiniciando em loop / "activating (auto-restart)" | `Type=` do service tem que ser `oneshot` + `RemainAfterExit=yes`, nao `forking`. Confere `/etc/systemd/system/AGENTE-agent.service` contra `systemd/agente-agent.service` do repo. |
+| Sessao tmux `AGENTE` nao aparece depois de subir o service | O pane provavelmente crashou na inicializacao (ex: `claude` recusando rodar por algum motivo) - tmux fecha sessao com pane vazio sozinho. Roda o comando do `start-AGENTE-agent.sh` na mao (sem `-d`) pra ver o erro real. |
+| Bot reage mas agente nao responde | `systemctl is-active AGENTE-agent`. Se inactive, restart. Confere tambem se a sessao tmux esta viva e nao travada num prompt de onboarding (ETAPA 9). |
+| Insert/update no banco falha com "permission denied" | Faltou o `GRANT ALL ... TO AGENTE` da ETAPA 4 depois de aplicar o schema. |
+| `memory_api.py`/`consolidate-conversations.py` erro de conexao no banco | Confere se `PG_PASSWORD` esta em `/opt/AGENTE-bot/.env` (nao so em `/root/.agente-secrets.env` - esses dois processos rodam como AGENTE, que nao le arquivo do root). |
+| Audio nao transcreve | `faster-whisper` roda local, sem chave. Se nao esta transcrevendo, confere log do bot por erro de modelo/ffmpeg. |
+| Audio nao sai | Confere `ELEVENLABS_API_KEY` ou `GEMINI_API_KEY` no `/opt/AGENTE-bot/.env`. |
+| Agente nao lembra conversa antiga | Cron `consolidate-conversations.py` instalado no crontab do **root** (nao do AGENTE)? Ver `crontab-referencia.txt`. |
+| VPS reboot e nao volta | `systemctl is-enabled AGENTE-agent AGENTE-bot AGENTE-memory` deve dar `enabled` em todos. |
 
 ---
 
-## FIM DO SETUP v3
+## FIM DO SETUP v4
 
 Em caso de duvida, abrir issue:
-https://github.com/{{GITHUB_USERNAME}}/agente-claude-telegram-setup-alunos-denderson/issues
+https://github.com/ermersonbruno77/bella-instalador/issues

@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Servico de memoria local (pgvector + fastembed, sem OpenAI). Porta 3007."""
 import os
+from pathlib import Path
 from typing import Optional, List
 from fastapi import FastAPI
 from pydantic import BaseModel
 import psycopg2
 from fastembed import TextEmbedding
 
-PG = None
-for line in open('/root/.agente-secrets.env'):
-    if line.startswith('PG_PASSWORD='):
-        PG = line.strip().split('=', 1)[1]
+ENV_FILE = Path('/opt/{{AGENTE_NAME_LOWERCASE}}-bot/.env')
+_env = {}
+if ENV_FILE.exists():
+    for line in ENV_FILE.read_text().split('\n'):
+        if '=' in line and not line.startswith('#'):
+            k, v = line.split('=', 1)
+            _env[k.strip()] = v.strip()
+PG = _env.get('PG_PASSWORD') or os.environ.get('PG_PASSWORD')
 DSN = f"postgres://{{AGENTE_NAME_LOWERCASE}}:{PG}@127.0.0.1:5432/{{AGENTE_NAME_LOWERCASE}}_memory"
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 

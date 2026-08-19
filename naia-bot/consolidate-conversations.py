@@ -4,10 +4,14 @@ import os, json, glob, requests, psycopg2
 
 BOT_DIR = '/opt/{{AGENTE_NAME_LOWERCASE}}-bot'
 API = 'http://127.0.0.1:3007/embed'
-PG = None
-for line in open('/root/.agente-secrets.env'):
-    if line.startswith('PG_PASSWORD='):
-        PG = line.strip().split('=', 1)[1]
+_env = {}
+_env_file = f'{BOT_DIR}/.env'
+if os.path.exists(_env_file):
+    for line in open(_env_file):
+        if '=' in line and not line.startswith('#'):
+            k, v = line.strip().split('=', 1)
+            _env[k.strip()] = v.strip()
+PG = _env.get('PG_PASSWORD') or os.environ.get('PG_PASSWORD')
 DSN = f"postgres://{{AGENTE_NAME_LOWERCASE}}:{PG}@127.0.0.1:5432/{{AGENTE_NAME_LOWERCASE}}_memory"
 SESSION = 'telegram:{{TELEGRAM_USER_ID_DONO}}'
 

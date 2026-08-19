@@ -1,4 +1,8 @@
-# Crontab de referência — instala com `crontab -e` na VPS, depois do bootstrap.
+# Crontab de referência — instala com `sudo crontab -e` (crontab do ROOT, não
+# do usuário do agente). Isso é obrigatório, não opcional: a linha de restart
+# do agente precisa de systemctl (só root pode reiniciar um service), e os
+# scripts abaixo leem a senha do Postgres em /root/.agente-secrets.env (só
+# root tem permissão de leitura nesse arquivo).
 # Troque {{AGENTE_NAME_LOWERCASE}} pelo nome real definido na ETAPA 0.
 # Todos os horários abaixo são em UTC (hora do servidor). Converta pra Brasília
 # (UTC-3) antes de decidir horário de briefing/relatório.
